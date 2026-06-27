@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
                     let temp = parse_temp(temp).unwrap_or(0);
                     map.entry(name)
                         .and_modify(|f| f.update(temp))
-                        .or_insert_with(|| City::new(temp));
+                        .or_insert(City::new(temp));
                 }
                 map
             },
