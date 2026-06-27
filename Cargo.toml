@@ -1,5 +1,5 @@
 [package]
-name = "idk"
+name = "1brc"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,7 +7,6 @@ edition = "2024"
 codegen-units = 1
 lto = true
 panic = "abort"
-incremental = false
 
 [dependencies]
 anyhow = "1.0.102"
