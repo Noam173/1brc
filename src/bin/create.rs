@@ -38,7 +38,6 @@ pub fn build_test_data() -> Result<()> {
     let station_names_10k: Vec<_> = weather_station_names
         .sample(rng, 10_000)
         .map(|f| {
-            let rng = &mut rand::rng();
             let temp = uni.sample(rng);
             format!("{};{:.1}", f, temp)
         })
