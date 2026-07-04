@@ -10,7 +10,10 @@ panic = "abort"
 
 [dependencies]
 anyhow = "1.0.102"
+indicatif = "0.18.6"
 lexical-core = "1.0.6"
 memmap2 = "0.9.11"
+rand = "0.10.2"
 rayon = "1.12.0"
 rustc-hash = "2.1.2"
+
