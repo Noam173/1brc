@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
+use indicatif::ProgressIterator;
 use memmap2::Mmap;
 use rand::distr::{Distribution, Uniform};
 use rand::seq::IndexedRandom;
 use rayon::prelude::*;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 use std::env::args;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -11,10 +12,11 @@ const COLDEST: f32 = -99.9;
 const HOTTEST: f32 = 99.9;
 const STATIONS: &str = "data/weather_stations.csv";
 const MEASUREMENTS: &str = "data/measurements.txt";
-fn get_rows() -> Result<usize> {
+const MAX_ROWS: u32 = 1_000_000_000;
+fn get_rows() -> Result<u32> {
     let rows = match args().nth(1) {
-        Some(s) => s.parse::<usize>()?,
-        None => 1_000_000_000,
+        Some(s) => s.parse::<u32>()?,
+        None => MAX_ROWS,
     };
     Ok(rows)
 }
@@ -42,9 +44,12 @@ fn main() -> Result<()> {
             |rng, _| (10. * uni.sample(rng)).round() / 10.,
         )
         .collect();
-    for num in nums {
-        dst.write_all(station_names_10k.choose(rng).context("couldnt choose")?)?;
-        writeln!(dst, "{}", num)?;
+    let mut buff = ryu::Buffer::new();
+    for num in nums.into_iter().progress() {
+        let station = station_names_10k.choose(rng).context("couldnt choose")?;
+        dst.write_all(station)?;
+        dst.write_all(buff.format_finite(num).as_bytes())?;
+        dst.write_all(b"\n")?;
     }
     dst.flush()?;
     println!("took {:.3}s", start.elapsed().as_secs_f32());

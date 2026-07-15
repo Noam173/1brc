@@ -37,6 +37,7 @@ fn parse_temp(temp: &[u8]) -> anyhow::Result<i32> {
 }
 
 fn main() -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
     let mut out = std::io::stdout().lock();
     let file = File::open(FILE)?;
     let mmap = unsafe { Mmap::map(&file)? };
@@ -67,16 +68,25 @@ fn main() -> anyhow::Result<()> {
         );
     let mut v: Vec<_> = map.into_iter().collect();
     v.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    let mut min_buff = ryu::Buffer::new();
+    let mut sum_buff = ryu::Buffer::new();
+    let mut max_buff = ryu::Buffer::new();
+    let mut line = Vec::with_capacity(64);
     for (k, v) in v {
+        let min = v.min as f32 / 10.;
+        let sum = v.sum as f32 / v.count as f32 / 10.;
+        let max = v.max as f32 / 10.;
+        line.clear();
+        line.extend_from_slice(min_buff.format_finite(min).as_bytes());
+        line.push(b' ');
+        line.extend_from_slice(sum_buff.format_finite(sum).as_bytes());
+        line.push(b' ');
+        line.extend_from_slice(max_buff.format_finite(max).as_bytes());
+        line.push(b'\n');
         out.write_all(k)?;
-        writeln!(
-            out,
-            " {:.1}, {:.1}, {:.1}",
-            v.min as f32 / 10.0,
-            v.sum as f32 / v.count as f32 / 10.0,
-            v.max as f32 / 10.0
-        )?;
+        out.write_all(&line)?;
     }
     out.flush()?;
+    println!("took {:.3}s", start.elapsed().as_secs_f32());
     Ok(())
 }
