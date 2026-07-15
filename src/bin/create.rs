@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use indicatif::ProgressIterator;
 use memmap2::Mmap;
 use rand::distr::{Distribution, Uniform};
 use rand::seq::IndexedRandom;
