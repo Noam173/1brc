@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
         out.write_all(k)?;
         out.write_all(&line)?;
     }
+    writeln!(out, "took {:.3}s", start.elapsed().as_secs_f32())?;
     out.flush()?;
-    println!("took {:.3}s", start.elapsed().as_secs_f32());
     Ok(())
 }
