@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         )
         .collect();
     let mut buff = ryu::Buffer::new();
-    for num in nums.into_iter().progress() {
+    for num in nums.into_iter() {
         let station = station_names_10k.choose(rng).context("couldnt choose")?;
         dst.write_all(station)?;
         dst.write_all(buff.format_finite(num).as_bytes())?;
