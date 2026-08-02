@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
             |mut map, line| {
                 let mut parts = line.split(|&b| b == b';');
                 if let (Some(name), Some(temp)) = (parts.next(), parts.next()) {
-                    let temp = parse_temp(temp).unwrap_or(0);
+                    let temp = parse_temp(temp).unwrap_or_default();
                     map.entry(name)
                         .and_modify(|f| f.update(temp))
                         .or_insert(City::new(temp));

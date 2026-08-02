@@ -1,14 +1,16 @@
 use anyhow::{Context, Result};
-use memmap2::Mmap;
+use indicatif::ProgressIterator;
+use rand::RngExt;
 use rand::distr::{Distribution, Uniform};
 use rand::seq::IndexedRandom;
-use rayon::prelude::*;
-use rustc_hash::FxHashSet as HashSet;
+use rayon::iter::ParallelIterator;
+use rayon::str::ParallelString;
+use rustc_hash::FxHashSet;
 use std::env::args;
-use std::fs::File;
+use std::fs::{File, read_to_string};
 use std::io::{BufWriter, Write};
-const COLDEST: f32 = -99.9;
-const HOTTEST: f32 = 99.9;
+const COLDEST: i32 = -999;
+const HOTTEST: i32 = 999;
 const STATIONS: &str = "data/weather_stations.csv";
 const MEASUREMENTS: &str = "data/measurements.txt";
 const MAX_ROWS: u32 = 1_000_000_000;
@@ -22,35 +24,28 @@ fn get_rows() -> Result<u32> {
 fn main() -> Result<()> {
     let start = std::time::Instant::now();
     let rows = get_rows()?;
-    let src = File::open(STATIONS)?;
-    let mut dst = BufWriter::new(File::create(MEASUREMENTS)?);
-    let mmap = unsafe { Mmap::map(&src) }?;
-    let data: &[u8] = &mmap;
+    let src = read_to_string(STATIONS)?;
+    let mut dst = BufWriter::with_capacity(64 * 1024usize.pow(2), File::create(MEASUREMENTS)?);
     let uni = Uniform::new(COLDEST, HOTTEST)?;
     let rng = &mut rand::rng();
-    let stations: Vec<&[u8]> = data
-        .par_split(|&b| b == b'\n')
-        .map(|f| f.split_inclusive(|&b| b == b';').next().unwrap_or_default())
-        .collect::<HashSet<_>>()
+    let stations: Vec<&str> = src
+        .par_lines()
+        .map(|f| f.split_once(';').map(|(name, _)| name).unwrap_or_default())
+        .collect::<FxHashSet<_>>()
         .into_iter()
         .collect();
-    let station_names_10k: [&[u8]; 10_000] =
-        stations.sample_array(rng).context("couldnt sample")?;
-    let nums: Vec<f32> = (0..rows)
-        .into_par_iter()
-        .map_init(
-            || rand::rng(),
-            |rng, _| (10. * uni.sample(rng)).round() / 10.,
-        )
+    let station_names_10k: [_; 10_000] = stations.sample_array(rng).context("couldnt sample")?;
+    let nums: Vec<(usize, f32)> = (0..rows)
+        .into_iter()
+        .map(|_| (rng.random_range(0..10_000), uni.sample(rng) as f32 / 10.))
         .collect();
     let mut buff = ryu::Buffer::new();
-    for num in nums.into_iter() {
-        let station = station_names_10k.choose(rng).context("couldnt choose")?;
-        dst.write_all(station)?;
+    for (idx, num) in nums.into_iter().progress() {
+        dst.write_all(station_names_10k[idx].as_bytes())?;
         dst.write_all(buff.format_finite(num).as_bytes())?;
         dst.write_all(b"\n")?;
     }
     dst.flush()?;
-    println!("took {:.3}s", start.elapsed().as_secs_f32());
+    println!("took {:.3?}", start.elapsed());
     Ok(())
 }
