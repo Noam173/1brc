@@ -42,6 +42,7 @@ fn main() -> Result<()> {
     let mut buff = ryu::Buffer::new();
     for (idx, num) in nums.into_iter().progress() {
         dst.write_all(station_names_10k[idx].as_bytes())?;
+        dst.write_all(b";")?;
         dst.write_all(buff.format_finite(num).as_bytes())?;
         dst.write_all(b"\n")?;
     }
