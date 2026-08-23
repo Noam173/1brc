@@ -1,13 +1,11 @@
 use anyhow::{Context, Result};
-use indicatif::ProgressIterator;
+use memmap2::Mmap;
 use rand::RngExt;
-use rand::distr::{Distribution, Uniform};
 use rand::seq::IndexedRandom;
-use rayon::iter::ParallelIterator;
-use rayon::str::ParallelString;
-use rustc_hash::FxHashSet;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::slice::ParallelSlice;
 use std::env::args;
-use std::fs::{File, read_to_string};
+use std::fs::File;
 use std::io::{BufWriter, Write};
 const COLDEST: i32 = -999;
 const HOTTEST: i32 = 999;
@@ -22,31 +20,35 @@ fn get_rows() -> Result<u32> {
     Ok(rows)
 }
 fn main() -> Result<()> {
-    let start = std::time::Instant::now();
-    let rows = get_rows()?;
-    let src = read_to_string(STATIONS)?;
-    let mut dst = BufWriter::with_capacity(64 * 1024usize.pow(2), File::create(MEASUREMENTS)?);
-    let uni = Uniform::new(COLDEST, HOTTEST)?;
+    let rows = 0..get_rows()?;
+    let map = unsafe { Mmap::map(&File::open(STATIONS)?) }?;
+    let mut out = BufWriter::with_capacity(8 * 1024usize.pow(2), File::create(MEASUREMENTS)?);
     let rng = &mut rand::rng();
-    let stations: Vec<&str> = src
-        .par_lines()
-        .map(|f| f.split_once(';').map(|(name, _)| name).unwrap_or_default())
-        .collect::<FxHashSet<_>>()
-        .into_iter()
-        .collect();
-    let station_names_10k: [_; 10_000] = stations.sample_array(rng).context("couldnt sample")?;
-    let nums: Vec<(usize, f32)> = (0..rows)
-        .into_iter()
-        .map(|_| (rng.random_range(0..10_000), uni.sample(rng) as f32 / 10.))
-        .collect();
+    let stations: [&[u8]; 10_000] = parse_map(&map)
+        .sample_array(rng)
+        .context("couldnt sample")?;
+    let nums = index_num(rows);
     let mut buff = ryu::Buffer::new();
-    for (idx, num) in nums.into_iter().progress() {
-        dst.write_all(station_names_10k[idx].as_bytes())?;
-        dst.write_all(b";")?;
-        dst.write_all(buff.format_finite(num).as_bytes())?;
-        dst.write_all(b"\n")?;
+    for (idx, num) in nums {
+        out.write_all(unsafe { stations.get_unchecked(idx) })?;
+        out.write_all(buff.format_finite(num).as_bytes())?;
+        out.write_all(b"\n")?;
     }
-    dst.flush()?;
-    println!("took {:.3?}", start.elapsed());
+    out.flush()?;
     Ok(())
+}
+fn index_num(rows: impl IntoParallelIterator) -> Vec<(usize, f32)> {
+    rows.into_par_iter()
+        .map_init(rand::rng, |rng, _| {
+            (
+                rng.random_range(0..10_000),
+                rng.random_range(COLDEST..=HOTTEST) as f32 / 10.,
+            )
+        })
+        .collect()
+}
+fn parse_map(map: &[u8]) -> Vec<&[u8]> {
+    map.par_split(|b| *b == b'\n')
+        .map(|f| f.split_inclusive(|b| *b == b';').next().unwrap_or_default())
+        .collect()
 }
