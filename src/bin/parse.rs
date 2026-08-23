@@ -68,16 +68,17 @@ fn main() -> Result<()> {
 }
 fn stdout_write(v: Vec<(&[u8], f32, f32, f32)>, out: &mut impl Write) -> Result<()> {
     let mut buf = Buffer::new();
+    let mut line: Vec<_> = Vec::with_capacity(20);
     v.into_iter()
         .try_for_each(|(name, min, sum, max)| -> Result<()> {
-            out.write_all(name)?;
-            out.write_all(buf.format_finite(min).as_bytes())?;
-            out.write_all(b"/")?;
-            out.write_all(buf.format_finite(sum).as_bytes())?;
-            out.write_all(b"/")?;
-            out.write_all(buf.format_finite(max).as_bytes())?;
-            out.write_all(b"/")?;
-            out.write_all(b"\n")?;
+            line.extend_from_slice(name);
+            line.extend_from_slice(buf.format_finite(min).as_bytes());
+            line.push(b'/');
+            line.extend_from_slice(buf.format_finite(sum).as_bytes());
+            line.push(b'/');
+            line.extend_from_slice(buf.format_finite(max).as_bytes());
+            line.push(b'\n');
+            out.write_all(&line)?;
             Ok(())
         })?;
     Ok(())
