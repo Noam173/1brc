@@ -1,7 +1,15 @@
+use anyhow::Result;
 use memmap2::Mmap;
-use rayon::prelude::*;
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 use rustc_hash::FxHashMap;
-use std::{fs::File, io::Write};
+use ryu::Buffer;
+use std::{
+    fs::File,
+    io::{Write, stdout},
+};
 const FILE: &str = "data/measurements.txt";
 struct City {
     count: u32,
@@ -31,23 +39,55 @@ impl City {
         self.sum += other.sum;
     }
 }
-fn parse_temp(temp: &[u8]) -> anyhow::Result<i32> {
+fn parse_temp(temp: &[u8]) -> Result<i32> {
     let temp: f32 = lexical_core::parse(temp)?;
     Ok((10. * temp) as i32)
 }
 
-fn main() -> anyhow::Result<()> {
-    let start = std::time::Instant::now();
-    let mut out = std::io::stdout().lock();
+fn main() -> Result<()> {
+    let mut out = stdout().lock();
     let file = File::open(FILE)?;
-    let mmap = unsafe { Mmap::map(&file)? };
-    let data: &[u8] = &mmap;
-    let map: FxHashMap<&[u8], City> = data
-        .par_split(|&b| b == b'\n')
+    let map = unsafe { Mmap::map(&file)? };
+    let map: FxHashMap<&[u8], City> = parse_map(&map);
+    let mut v: Vec<_> = map.into_iter().collect();
+    v.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    let v: Vec<_> = v
+        .par_iter()
+        .map(|(k, v)| {
+            (
+                *k,
+                v.min as f32 / 10.,
+                v.sum as f32 / v.count as f32 / 10.,
+                v.max as f32 / 10.,
+            )
+        })
+        .collect();
+    stdout_write(v, &mut out)?;
+    out.flush()?;
+    Ok(())
+}
+fn stdout_write(v: Vec<(&[u8], f32, f32, f32)>, out: &mut impl Write) -> Result<()> {
+    let mut buf = Buffer::new();
+    v.into_iter()
+        .try_for_each(|(name, min, sum, max)| -> Result<()> {
+            out.write_all(name)?;
+            out.write_all(buf.format_finite(min).as_bytes())?;
+            out.write_all(b"/")?;
+            out.write_all(buf.format_finite(sum).as_bytes())?;
+            out.write_all(b"/")?;
+            out.write_all(buf.format_finite(max).as_bytes())?;
+            out.write_all(b"/")?;
+            out.write_all(b"\n")?;
+            Ok(())
+        })?;
+    Ok(())
+}
+fn parse_map(map: &[u8]) -> FxHashMap<&[u8], City> {
+    map.par_split(|b| *b == b'\n')
         .fold(
             || FxHashMap::<&[u8], City>::with_capacity_and_hasher(10_000, Default::default()),
             |mut map, line| {
-                let mut parts = line.split(|&b| b == b';');
+                let mut parts = line.split(|b| *b == b';');
                 if let (Some(name), Some(temp)) = (parts.next(), parts.next()) {
                     let temp = parse_temp(temp).unwrap_or_default();
                     map.entry(name)
@@ -65,28 +105,5 @@ fn main() -> anyhow::Result<()> {
                 }
                 sum_map
             },
-        );
-    let mut v: Vec<_> = map.into_iter().collect();
-    v.sort_unstable_by(|a, b| a.0.cmp(b.0));
-    let mut min_buff = ryu::Buffer::new();
-    let mut sum_buff = ryu::Buffer::new();
-    let mut max_buff = ryu::Buffer::new();
-    let mut line = Vec::with_capacity(64);
-    for (k, v) in v {
-        let min = v.min as f32 / 10.;
-        let sum = v.sum as f32 / v.count as f32 / 10.;
-        let max = v.max as f32 / 10.;
-        line.clear();
-        line.extend_from_slice(min_buff.format_finite(min).as_bytes());
-        line.push(b' ');
-        line.extend_from_slice(sum_buff.format_finite(sum).as_bytes());
-        line.push(b' ');
-        line.extend_from_slice(max_buff.format_finite(max).as_bytes());
-        line.push(b'\n');
-        out.write_all(k)?;
-        out.write_all(&line)?;
-    }
-    writeln!(out, "took {:.3}s", start.elapsed().as_secs_f32())?;
-    out.flush()?;
-    Ok(())
+        )
 }
