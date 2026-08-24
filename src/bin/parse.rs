@@ -45,7 +45,6 @@ fn parse_temp(temp: &[u8]) -> Result<i32> {
 }
 
 fn main() -> Result<()> {
-    let mut out = stdout().lock();
     let file = File::open(FILE)?;
     let map = unsafe { Mmap::map(&file)? };
     let map: FxHashMap<&[u8], City> = parse_map(&map);
@@ -62,25 +61,25 @@ fn main() -> Result<()> {
             )
         })
         .collect();
-    stdout_write(v, &mut out)?;
-    out.flush()?;
+    stdout_write(v)?;
     Ok(())
 }
-fn stdout_write(v: Vec<(&[u8], f32, f32, f32)>, out: &mut impl Write) -> Result<()> {
+fn stdout_write(v: Vec<(&[u8], f32, f32, f32)>) -> Result<()> {
+    let mut out = stdout().lock();
     let mut buf = Buffer::new();
     let mut line: Vec<_> = Vec::with_capacity(20);
-    v.into_iter()
-        .try_for_each(|(name, min, sum, max)| -> Result<()> {
-            line.extend_from_slice(name);
-            line.extend_from_slice(buf.format_finite(min).as_bytes());
-            line.push(b'/');
-            line.extend_from_slice(buf.format_finite(sum).as_bytes());
-            line.push(b'/');
-            line.extend_from_slice(buf.format_finite(max).as_bytes());
-            line.push(b'\n');
-            out.write_all(&line)?;
-            Ok(())
-        })?;
+    for (name, min, sum, max) in v {
+        line.clear();
+        line.extend_from_slice(name);
+        line.extend_from_slice(buf.format_finite(min).as_bytes());
+        line.push(b'/');
+        line.extend_from_slice(buf.format_finite(sum).as_bytes());
+        line.push(b'/');
+        line.extend_from_slice(buf.format_finite(max).as_bytes());
+        line.push(b'\n');
+        out.write_all(&line)?;
+    }
+    out.flush()?;
     Ok(())
 }
 fn parse_map(map: &[u8]) -> FxHashMap<&[u8], City> {
